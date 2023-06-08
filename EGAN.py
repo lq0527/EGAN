@@ -25,23 +25,7 @@ def get_similarity_score(output1, output2):
     similarity_score = dot_product / (norm1 * norm2)
     similarity_score = similarity_score.unsqueeze(1)
     return similarity_score
-# def Init_net_from_before(my_img_ch=1, my_output_ch=1, my_output_process='', net_path='',net_kind =''):
-#     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-#     if net_kind == Discriminator:
-#         net = net_kind()
-#     else:    
-#         net = net_kind(img_ch=my_img_ch, output_ch=my_output_ch, output_process=my_output_process)
-#     init_weights(net, init_type='kaiming', gain=0.02)
-#     assert os.path.exists(net_path), "file: '{}' does not exist.".format(net_path)
-#     net.load_state_dict(torch.load(net_path, map_location = device))
-#     net = net.to(device)
-#     return net
-# def Init_net_from_scratch(my_img_ch=1, my_output_ch=1, my_output_process='',net_kind =''):  #?
-#     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-#     net = net_kind(img_ch=my_img_ch, output_ch=my_output_ch, output_process=my_output_process)
-#     init_weights(net, init_type='kaiming', gain=0.02)
-#     net = net.to(device)
-#     return net
+
 
 criter_cosmae = LOSS_COS_MAE()
 criter_piecewisemae = PIECEWISE_MAE()
@@ -59,15 +43,6 @@ criter_tv = Loss_TV()
 criter_var = LOSS_VAR()
 criter_fl = FocalLoss()
 
-def reg(input):
-
-    # penalty term to constrain output to 0 or 1
-    cpm = torch.where(input>=0.5,1.0,0.0)
-    cpm = cpm.to(torch.float32)
-    reg_loss = criter_mse(input,cpm.to(device))    
-    reg_loss = reg_loss.float()
-    # reg_loss = torch.mean(torch.abs(torch.min(output, torch.ones_like(output)*0.5)) + torch.abs(torch.max(output, torch.zeros_like(output)) - 1))
-    return reg_loss
 
 # Declare some variables
 Index =1                                                                                                                                                                                                                 
@@ -77,7 +52,7 @@ TIME = 'TEST_0606' +  '_' + str(Index)   #x
 DATA, NET, Method, Update_version ='Tom&Jerry', 'EGan', 'RELU', 'FixedPu' # or mnist2k_Binarized || TWOPOOLS,  TWOPOOLSplusSSVL,  ONEPOOLplusSSVL #x
 Lossfunc_TWOPOOLS, Lossfunc_SSVL, Continue, BOH = 'Null', 'mse', False, True
 img_ch, output_ch = 1, 1
-# BatchSize = 64
+
 base_epochs = 1000  #500
 best_PSNR = 0.0
 # ###############OUTPUT###################
@@ -136,33 +111,17 @@ NOTE = TIME + "_" + NET + "_" + Method + '_' + Update_version + '_L' + Lossfunc_
 final_path =  './model_pth/' + NOTE + '/' + str(int(base_epochs)) + "_final.pth"
 
 
-# # final_path = './model_pth/' + NOTE + '/' + '167_166.pth'
-# net_val = Init_net_from_before(my_img_ch=1, my_output_ch=1, my_output_process='narrow20', net_path=final_path)
-# # net = UNet_V3(img_ch=1, output_ch=1,output_process = output_process)
-# init_weights(net_val, init_type='kaiming', gain=0.02)
-# Validation(NOTE, output_ch, test_loader, net_val)
-# exit()
-
-
 E = Evaluator()
 G = Generator(img_ch=1,output_process='0to1')
-# G_binary = Generator(img_ch=1,output_process='sign')
-# D, train_from = Init_net_from_before(my_img_ch=1, my_output_ch=1, my_output_process='0to1',net_path=net_pth_D ,net_kind=Discriminator), 'from_scratch'
-# G, train_from = Init_net_from_before(my_img_ch=1, my_output_ch=1, my_output_process='0to1' ,net_path=net_pth_G,net_kind=Generator), 'from_scratch'
-# G_binary, train_from = Init_net_from_scratch(my_img_ch=1, my_output_ch=1, my_output_process='sign',net_kind=Generator), 'from_scratch'
-
 E = E.to(device)
 G = G.to(device)
-# G_binary = G_binary.to(device)
-# criterion = nn.BCEWithLogitsLoss()  # 是单目标二分类交叉熵函数
-# criterion = nn.BCELoss()  # 是单目标二分类交叉熵函数
+
 
 lr1= 0.0001
 lr2= 0.0001
 
 beta1 = 0.5
-d_optimizer = optim.Adam(E.parameters(), lr=lr1, betas=(beta1, 0.999))
-# d_optimizer = optim.SGD(D.parameters(), lr=lr1)
+e_optimizer = optim.Adam(E.parameters(), lr=lr1, betas=(beta1, 0.999))
 g_optimizer = optim.Adam(G.parameters(), lr=lr2, betas=(beta1, 0.999))
 real_label = 1.
 fake_label = 0.
@@ -192,32 +151,27 @@ for base_epoch_i in range(base_epochs):
         
         for SSVL_iter_i, SSVL_data in enumerate(SSVL_train_bar):
             
-            SSVL_input_Ae = SSVL_data.detach()    
+            SSVL_input_Ae = SSVL_data   
             SSVL_Pu = torch.zeros_like(SSVL_input_Ae)
             
             E.train()  
-            d_optimizer.zero_grad()  #梯度置零
+            e_optimizer.zero_grad()  #梯度置零
             SSVL_output_As = G(SSVL_input_Ae.to(device))
             SSVL_binary_As=torch.where(SSVL_output_As>0.5,1.0,0.0).detach()
             # SSVL_binary_As=SSVL_output_As
             SSVL_Ac, SSVL_Pc = ASM(d=20e-3, PhsHolo=SSVL_Pu.to(device), AmpHolo = SSVL_binary_As.to(device))
-
             # ENN的训练过程
-            
-            # G.eval()
             
             score = E(SSVL_input_Ae.to(device),SSVL_output_As.to(device))  
             # 计算余弦相似度损失
             labels = get_similarity_score(SSVL_input_Ae.to(device),SSVL_Ac.to(device)).detach()
             E_loss = criter_mse(score, labels)
             E_loss.backward()
-            d_optimizer.step()
-
-               
-             
+            e_optimizer.step()
+       
             #生成网络的训练过程
             G.train()
-            E.eval()
+            E.eval()   ###?
             
             g_optimizer.zero_grad()
             SSVL_output_As1 = G(SSVL_input_Ae.to(device))
@@ -227,37 +181,23 @@ for base_epoch_i in range(base_epochs):
             g_loss.backward()
             g_optimizer.step()
                 
-
             
             # real_img = SSVL_input_Ae# torch.Size([BatchSize, 1, 100, 100])
-      
             # SSVL_output_As = G((SSVL_input_Ae).to(device)) 
             # # SSVL_binary_As = SSVL_output_As  #不加detach()的话梯度可以传 说明梯度在此时会影响 二值化也是
             # SSVL_binary_As=torch.where(SSVL_output_As>0.5,1.0,0.0)
-            # SSVL_Ac, SSVL_Pc = ASM(d=20e-3, PhsHolo=SSVL_Pu.to(device), AmpHolo = SSVL_binary_As.to(device))
-        
-            # score = E(SSVL_input_Ae.to(device),SSVL_output_As.to(device))
-        
-            
+            # SSVL_Ac, SSVL_Pc = ASM(d=20e-3, PhsHolo=SSVL_Pu.to(device), AmpHolo = SSVL_binary_As.to(device)) 
+            # score = E(SSVL_input_Ae.to(device),SSVL_output_As.to(device))       
             # labels = get_similarity_score(SSVL_input_Ae.to(device),SSVL_Ac.to(device)).detach()
-       
-      
-            
             # E_loss = criter_mse(score, labels)
-            
-            
-            
+           
             # g_loss = criter_mse(score,real_labels)  
-        
             # E.zero_grad()
-            
             # G.zero_grad()
             # E_loss.backward(retain_graph=True)  #这里还不能分开````
             # g_loss.backward()
-            
             # d_optimizer.step() 
             # g_optimizer.step()   
-            
             # SSVL_sum_loss_d += E_loss.item()
             # SSVL_sum_loss_g += g_loss.item()
             # # sum_loss_g_bce += g_loss_GAN.item()
