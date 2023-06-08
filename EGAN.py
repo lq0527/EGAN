@@ -314,7 +314,7 @@ for base_epoch_i in range(base_epochs):
             val_bar = tqdm(valid_loader)
             val_iters = len(valid_loader)
             for val_iter_i, val_data in enumerate(val_bar):
-                val_input_Ae = val_data                                  # [BatchSize, 1, 50, 50]
+                val_input_Ae = val_data                                  # [BatchSize, 1, 100, 100]
                 val_output_As=net((val_input_Ae).to(device))
                 val_output_As_binary = torch.where(val_output_As>=0.5,1,0)
                 # val_output_As = val_output_As /((torch.max(torch.max(val_output_As, -1)[0], -1)[0]).unsqueeze(-1).unsqueeze(-1)+1e-6) 
