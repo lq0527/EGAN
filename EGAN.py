@@ -140,11 +140,15 @@ for base_epoch_i in range(base_epochs):
                 score = E(SSVL_input_Ae.to(device),SSVL_output_As.to(device))  
                 # 计算余弦相似度损失
                 labels = get_similarity_score(SSVL_input_Ae.to(device),SSVL_Ac.to(device)).detach()
-                E_loss = criter_mse(score, labels)
+                E_loss = criter_BCE(score, labels)
                 E_loss.backward()
                 e_optimizer.step()
                 SSVL_train_bar.desc = "Train epoch [{}/{}],Evaluator epoch [{}/{}]".format(base_epoch_i + 1, base_epochs,E_epoch_i + 1,E_epochs)
                 SSVL_train_bar.set_postfix({"G_loss":g_loss.item(),"E_loss":E_loss.item()})
+            print('Epoch[{}/{}], Train E :g_loss:{:.6f},d_loss:{:.6f},score:{:.6f},label:{:.6f}  '.format(
+                    base_epoch_i+1, base_epochs, g_loss.item(),E_loss.item(),score.mean().item(),labels.mean().item()
+                  # 打印的是真实图片的损失均值
+                ))
 
         for G_epoch_i in range (G_epochs):
             SSVL_train_bar = tqdm(train_loader) 
@@ -153,9 +157,8 @@ for base_epoch_i in range(base_epochs):
                 #生成网络的训练过程
                 for param in G.parameters():
                     param.requires_grad = True
-                with torch.no_grad():
-                    for param in E.parameters():
-                        param.requires_grad = False
+                for param in E.parameters():
+                    param.requires_grad = False
                 G.train()
                 E.eval()
                 g_optimizer.zero_grad()
@@ -167,7 +170,10 @@ for base_epoch_i in range(base_epochs):
                 g_optimizer.step()
                 SSVL_train_bar.desc = "Train epoch [{}/{}],Generator epoch [{}/{}]".format(base_epoch_i + 1, base_epochs,G_epoch_i + 1,G_epochs)
                 SSVL_train_bar.set_postfix({"G_loss":g_loss.item(),"E_loss":E_loss.item()})
-                
+                print('Epoch[{}/{}],Train G: g_loss:{:.6f},d_loss:{:.6f},score1:{:.6f},label1:{:.6f}  '.format(
+                    base_epoch_i+1, base_epochs, g_loss.item(),E_loss.item(),score1.mean().item(),label1.mean().item()
+                  # 打印的是真实图片的损失均值
+                ))
 
                 
             
@@ -199,10 +205,7 @@ for base_epoch_i in range(base_epochs):
         sum_loss_d_list.append(SSVL_sum_loss_d / SSVL_iters)
         sum_loss_g_list.append(SSVL_sum_loss_g / SSVL_iters)
             
-        print('Epoch[{}/{}],g_loss:{:.6f},d_loss:{:.6f},score:{:.6f},label:{:.6f}  '.format(
-                    base_epoch_i+1, base_epochs, g_loss.item(),E_loss.item(),score.mean().item(),labels.mean().item()
-                  # 打印损失均值
-                ))
+   
             
         with open(train_lossDegragation_TXTNotes,'a') as file0:
             print("       {:.3f}        {:.6f}      {:.6f}         {:.6f}     ".format(base_epoch_i+1, SSVL_sum_loss_g / SSVL_iters, SSVL_sum_loss_d / SSVL_iters,sum_loss_g_bce / SSVL_iters),file=file0)
@@ -230,7 +233,7 @@ for base_epoch_i in range(base_epochs):
         # net = net.cuda()
         net = G  ##########
         # net1 = Generator(output_process='sign')  ##########
-        # net1.eval()
+        net.eval()
         
         with torch.no_grad():
             PSNR_val_sum = 0.0
