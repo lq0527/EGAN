@@ -70,7 +70,7 @@ NOTE = TIME + "_" + NET + "_" + Method + '_' + Update_version + '_L' + Lossfunc_
 final_path =  './model_pth/' + NOTE + '/' + str(int(base_epochs)) + "_final.pth"
 
 
-E = Evaluator()
+E = Generator(img_ch=2,output_process='0to1')
 G = Generator(img_ch=1,output_process='0to1')
 E = E.to(device)
 G = G.to(device)
@@ -80,7 +80,7 @@ lr1= 0.0001
 lr2= 0.0001
 
 beta1 = 0.5
-e_optimizer = optim.Adam(E.parameters(), lr=lr1, betas=(beta1, 0.999))
+E_optimizer = optim.Adam(E.parameters(), lr=lr1, betas=(beta1, 0.999))
 g_optimizer = optim.Adam(G.parameters(), lr=lr2, betas=(beta1, 0.999))
 real_label = 1.
 fake_label = 0.
@@ -109,73 +109,168 @@ for base_epoch_i in range(base_epochs):
         # SSVL_train_bar = tqdm(train_loader)
         SSVL_iters = len(train_loader)
         
+        
         for E_epoch_i in range (E_epochs):
-            SSVL_train_bar = tqdm(train_loader)
-           
+            
+            SSVL_sum_loss_e = 0.0
+            SSVL_sum_loss_g = 0.0
+            sum_label = 0.0
+            sum_score = 0.0
+            
+            SSVL_train_bar = tqdm(train_loader)  
             for SSVL_iter_i, SSVL_data in enumerate(SSVL_train_bar):
                 
                 SSVL_input_Ae = SSVL_data  
                 SSVL_Pu = torch.zeros_like(SSVL_input_Ae)
                 
-                e_optimizer.zero_grad()
+                E_optimizer.zero_grad()
                 
-                #梯度置零
+                #固定网络
+                for param in E.parameters():
+                    param.requires_grad = True
+                
+                for param in G.parameters():
+                    param.requires_grad = False
+               
                 SSVL_output_As = G(SSVL_input_Ae.to(device))
-                SSVL_output_As = SSVL_output_As.detach()
-                SSVL_binary_As=torch.where(SSVL_output_As>0.5,1.0,0.0)
+                
+                SSVL_binary_As=torch.where(SSVL_output_As>0.5,1.0,0.0).detach()
                 # SSVL_binary_As=SSVL_output_As
                 SSVL_Ac, SSVL_Pc = ASM(d=20e-3, PhsHolo=SSVL_Pu.to(device), AmpHolo = SSVL_binary_As.to(device))
 
                 # ENN的训练过程
-    
-                # G.eval()
-                # E.train()
-                for param in E.parameters():
-                    param.requires_grad = True
-                with torch.no_grad():
-                    for param in G.parameters():
-                        param.requires_grad = False
-                G.eval()
-                E.train()
-                score = E(SSVL_input_Ae.to(device),SSVL_output_As.to(device))  
+                
+                AeAs = torch.cat((SSVL_input_Ae.to(device), SSVL_output_As.to(device)), dim=1)
+                score = E(AeAs)        
                 # 计算余弦相似度损失
-                labels = get_similarity_score(SSVL_input_Ae.to(device),SSVL_Ac.to(device)).detach()
-                E_loss = criter_BCE(score, labels)
+                # torch.mean((y_true - y_pred) ** 2)
+                labels = (SSVL_input_Ae.to(device) - SSVL_Ac.to(device))
+                # labels = get_similarity_score(SSVL_input_Ae.to(device),SSVL_Ac.to(device)).detach()
+                E_loss = criter_mse(score, labels)
+                sum_label = sum_label+labels
+                SSVL_sum_loss_e = SSVL_sum_loss_e+E_loss.item()
+                sum_score = sum_score+score
+                
                 E_loss.backward()
-                e_optimizer.step()
+                E_optimizer.step()
                 SSVL_train_bar.desc = "Train epoch [{}/{}],Evaluator epoch [{}/{}]".format(base_epoch_i + 1, base_epochs,E_epoch_i + 1,E_epochs)
                 SSVL_train_bar.set_postfix({"G_loss":g_loss.item(),"E_loss":E_loss.item()})
-            print('Epoch[{}/{}], Train E :g_loss:{:.6f},d_loss:{:.6f},score:{:.6f},label:{:.6f}  '.format(
-                    base_epoch_i+1, base_epochs, g_loss.item(),E_loss.item(),score.mean().item(),labels.mean().item()
+                
+            print('Epoch[{}/{}], Train E :g_loss:{:.6f},avg e_loss:{:.6f},avg score:{:.6f},label:{:.6f}  '.format(
+                    base_epoch_i+1, base_epochs, g_loss.item(),(SSVL_sum_loss_e/SSVL_iters),(sum_score/SSVL_iters).mean(),(sum_label/SSVL_iters).mean()
                   # 打印的是真实图片的损失均值
                 ))
-
+            
+            
+            writer.add_scalar('E_loss', SSVL_sum_loss_e / SSVL_iters, (base_epoch_i+1)*(E_epoch_i+1))
+            
+        # init_weights(G, init_type='kaiming', gain=0.02) #G初始化
+        # print('---------------------G is initialized--------------------------')
         for G_epoch_i in range (G_epochs):
             SSVL_train_bar = tqdm(train_loader) 
-            for SSVL_iter_i, SSVL_data in enumerate(SSVL_train_bar):       
-             
+            
+            SSVL_sum_loss_e = 0.0
+            SSVL_sum_loss_g = 0.0
+            sum_label1 = 0.0 
+            sum_score1 = 0.0 
+                
+            for SSVL_iter_i, SSVL_data in enumerate(SSVL_train_bar):  
+                SSVL_input_Ae = SSVL_data  
+                SSVL_Pu = torch.zeros_like(SSVL_input_Ae)     
                 #生成网络的训练过程
                 for param in G.parameters():
                     param.requires_grad = True
+                
                 for param in E.parameters():
-                    param.requires_grad = False
-                G.train()
-                E.eval()
+                        param.requires_grad = False
+         
                 g_optimizer.zero_grad()
                 SSVL_output_As1 = G(SSVL_input_Ae.to(device))
-                score1= E(SSVL_input_Ae.to(device),SSVL_output_As1.to(device))
-                g_loss = criter_mse(score1, real_labels)     
                 
+                AeAs1 = torch.cat((SSVL_input_Ae.to(device), SSVL_output_As1.to(device)), dim=1)
+                score1= E(AeAs1)
+                
+                score_sum = torch.sum(torch.abs(score1),dim=(2,3))
+        
+                
+                SSVL_binary_As1=torch.where(SSVL_output_As1>0.5,1.0,0.0).detach()
+                # SSVL_binary_As=SSVL_output_As
+                # SSVL_Ac_1, SSVL_Pc = ASM(d=20e-3, PhsHolo=SSVL_Pu.to(device), AmpHolo = SSVL_output_As1.to(device))
+                SSVL_Ac1, SSVL_Pc = ASM(d=20e-3, PhsHolo=SSVL_Pu.to(device), AmpHolo = SSVL_binary_As1.to(device))
+                
+                # label1 = get_similarity_score(SSVL_input_Ae.to(device),SSVL_Ac1.to(device)).detach()         
+                label1 = torch.mean((SSVL_input_Ae.to(device) - SSVL_Ac1.to(device)) ** 2)
+                g_loss = criter_mse(score_sum, fake_labels) #+10*criter_mse(SSVL_input_Ae.to(device),SSVL_Ac_1)
                 g_loss.backward()
                 g_optimizer.step()
+                
+                sum_label1 = sum_label1+label1
+                SSVL_sum_loss_g = SSVL_sum_loss_g+g_loss.item()
+                sum_score1 = sum_score1+score1  
+     
+                
                 SSVL_train_bar.desc = "Train epoch [{}/{}],Generator epoch [{}/{}]".format(base_epoch_i + 1, base_epochs,G_epoch_i + 1,G_epochs)
                 SSVL_train_bar.set_postfix({"G_loss":g_loss.item(),"E_loss":E_loss.item()})
-                print('Epoch[{}/{}],Train G: g_loss:{:.6f},d_loss:{:.6f},score1:{:.6f},label1:{:.6f}  '.format(
-                    base_epoch_i+1, base_epochs, g_loss.item(),E_loss.item(),score1.mean().item(),label1.mean().item()
+            print('Epoch[{}/{}],Train G: avg g_loss:{:.6f},d_loss:{:.6f},avg score1:{:.6f},label1:{:.6f}  '.format(
+                    base_epoch_i+1, base_epochs, (SSVL_sum_loss_g / SSVL_iters),E_loss.item(),(sum_score1/SSVL_iters).mean(),(sum_label1/SSVL_iters).mean()
                   # 打印的是真实图片的损失均值
-                ))
-
+                ))    
                 
+            net = G  ##########
+            # net1 = Generator(output_process='sign')  ##########
+            # net1.eval()
+            with torch.no_grad():
+                PSNR_val_sum = 0.0
+                PSNR_val_sum_binary = 0.0
+                val_bar = tqdm(valid_loader)
+                val_iters = len(valid_loader)
+                
+                for val_iter_i, val_data in enumerate(val_bar):
+                    val_input_Ae = val_data                                  # [BatchSize, 1, 50, 50]
+                    val_output_As=net((val_input_Ae).to(device))
+                    val_output_As_binary = torch.where(val_output_As>=0.5,1,0)
+                    # val_output_As = val_output_As /((torch.max(torch.max(val_output_As, -1)[0], -1)[0]).unsqueeze(-1).unsqueeze(-1)+1e-6) 
+                    # val_output_As = torch.where(val_output_As>=0.5,1,0)
+                    # print('----------------------')
+                    # print(val_output_As.size())
+                    
+                    val_Pu = torch.zeros_like(val_output_As_binary)
+                    
+                    val_recons_Ac, val_recons_Pc = ASM(d=20e-3, PhsHolo = (val_Pu).to(device), AmpHolo = val_output_As.to(device))
+                    val_recons_Ac_binary, val_recons_Pc = ASM(d=20e-3, PhsHolo = (val_Pu).to(device), AmpHolo = val_output_As_binary.to(device))
+                    # val_fgMask = torch.where(val_input_Ae > 0.5, 1.0, 0.0).to(device)
+                    # val_num_fgpixel = torch.sum(val_fgMask, dim=(-1, -2))                    # [BatchSize, 1]
+                    # val_recons_Ac_MAX = torch.max(torch.max(val_recons_Ac, -1)[0], -1)[0]                  # [BatchSize, 1]
+                    # val_recons_Ac_MAX = val_recons_Ac_MAX.unsqueeze(-1).unsqueeze(-1)                      # [BatchSize, 1, 50, 50]
+                    # val_recons_Ac_MEAN = torch.sum(val_recons_Ac*val_fgMask, dim=(2, 3))/val_num_fgpixel # [BatchSize, 1]
+                    # val_recons_Ac_MEAN = val_recons_Ac_MEAN.unsqueeze(-1).unsqueeze(-1)                    # [BatchSize, 1, 50, 50]
+                    # val_recons_Ac_MAX_normlzd = val_recons_Ac / val_recons_Ac_MAX
+                    # val_recons_Ac_MEAN_normlzd = val_recons_Ac / val_recons_Ac_MEAN
+                    # if (val_recons_Ac / val_input_Ae_ratio.to(device)).max() < 2.0:
+                    #     val_recons_Ac_normlzd = val_recons_Ac / val_input_Ae_ratio.to(device)
+                    #     val_recons_Ac_normlzd = torch.where(val_recons_Ac_normlzd > 1.0, 2-val_recons_Ac_normlzd, val_recons_Ac_normlzd)
+                    #     nmlz_method = 'energy'
+                    # else:
+                    #     print("The range of reconstructed amplitude hologram is not in[0,2]")
+                    # val_recons_Ac_normlzd = val_recons_Ac /((torch.max(torch.max(val_recons_Ac, -1)[0], -1)[0]).unsqueeze(-1).unsqueeze(-1)+1e-6) 
+                    # nmlz_method = 'max'
+                    PSNR_val_iter = PSNR(val_recons_Ac.to(device), val_input_Ae.to(device))
+                    PSNR_val_iter_binary = PSNR(val_recons_Ac_binary.to(device), val_input_Ae.to(device))
+                    # val_recons_Ac_normlzd = Amplitude_Normalization(val_recons_Ac, val_input_Ae.to(device), normalized = 'Energy_Proportionated') 
+                    # PSNR_val_iter = PSNR(val_recons_Ac_normlzd, val_input_Ae.to(device))
+                    PSNR_val_sum += PSNR_val_iter
+                    PSNR_val_sum_binary += PSNR_val_iter_binary
+                    # val_bar.desc = "Validation epoch[{}/{}] PSNR for no binarization:{:.3f}".format(base_epoch_i + 1, base_epochs, PSNR_val_iter ) #输出每次epoch的validation的PSNR值
+                    
+                    
+                    # val_bar.desc = "Validation epoch[{}-{}/{}] AVG PSNR for no binarization:{:.3f}, PSNR for binarization:{:.3f}".format(base_epoch_i + 1,G_epoch_i+1, base_epochs, PSNR_val_sum/val_iter_i,PSNR_val_sum_binary/val_iter_i ) 
+            print("Validation epoch[{}-{}/{}] AVG PSNR for no binarization:{:.3f}, PSNR for binarization:{:.3f}".format(
+                base_epoch_i + 1,G_epoch_i+1, base_epochs, PSNR_val_sum/val_iter_i,PSNR_val_sum_binary/val_iter_i )        
+            )        
+                
+            
+            writer.add_scalar('G_loss', (SSVL_sum_loss_g / SSVL_iters), (base_epoch_i+1)*(G_epoch_i+1))
+            
             
             # real_img = SSVL_input_Ae# torch.Size([BatchSize, 1, 100, 100])
             # SSVL_output_As = G((SSVL_input_Ae).to(device)) 
