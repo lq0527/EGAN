@@ -70,7 +70,7 @@ NOTE = TIME + "_" + NET + "_" + Method + '_' + Update_version + '_L' + Lossfunc_
 final_path =  './model_pth/' + NOTE + '/' + str(int(base_epochs)) + "_final.pth"
 
 
-E = Generator(img_ch=2,output_process='0to1')
+E = Generator(img_ch=2,output_process='direct output')
 G = Generator(img_ch=1,output_process='0to1')
 E = E.to(device)
 G = G.to(device)
