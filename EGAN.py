@@ -30,7 +30,7 @@ def get_similarity_score(output1, output2):
 criter_mse = nn.MSELoss()
 criter_BCEll = nn.BCEWithLogitsLoss()
 criter_BCE = nn.BCELoss()
-
+criter_mae = nn.L1Loss()
 # Declare some variables
 Index =1                                                                                                                                                                                                                 
 Weights_SSVL = 'Option7_4'
