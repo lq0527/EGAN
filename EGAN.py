@@ -200,7 +200,7 @@ for base_epoch_i in range(base_epochs):
                 
                 # label1 = get_similarity_score(SSVL_input_Ae.to(device),SSVL_Ac1.to(device)).detach()         
                 label1 = torch.mean((SSVL_input_Ae.to(device) - SSVL_Ac1.to(device)) ** 2)
-                g_loss = criter_mse(score_sum, fake_labels) #+10*criter_mse(SSVL_input_Ae.to(device),SSVL_Ac_1)
+                g_loss = criter_mae(score_sum, fake_labels) #+10*criter_mse(SSVL_input_Ae.to(device),SSVL_Ac_1)
                 g_loss.backward()
                 g_optimizer.step()
                 
@@ -265,7 +265,7 @@ for base_epoch_i in range(base_epochs):
                     
                     # val_bar.desc = "Validation epoch[{}-{}/{}] AVG PSNR for no binarization:{:.3f}, PSNR for binarization:{:.3f}".format(base_epoch_i + 1,G_epoch_i+1, base_epochs, PSNR_val_sum/val_iter_i,PSNR_val_sum_binary/val_iter_i ) 
             print("Validation epoch[{}-{}/{}] AVG PSNR for no binarization:{:.3f}, PSNR for binarization:{:.3f}".format(
-                base_epoch_i + 1,G_epoch_i+1, base_epochs, PSNR_val_sum/val_iter_i,PSNR_val_sum_binary/val_iter_i )        
+                base_epoch_i + 1,G_epoch_i+1, base_epochs, PSNR_val_sum/val_iters,PSNR_val_sum_binary/val_iters )        
             )        
                 
             
