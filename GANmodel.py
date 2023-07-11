@@ -388,74 +388,7 @@ class Discriminator(nn.Module):
         x = self.fc(x)
         x = torch.sigmoid(x)
         return x
-     
-# class CNN(nn.Module):
-#     def __init__(self):
-#         super(CNN, self).__init__()
-#         self.conv1 = nn.Conv2d(1, 32, kernel_size=3, padding=1)
-#         self.pool1 = nn.MaxPool2d(kernel_size=2)
-#         self.conv2 = nn.Conv2d(32, 64, kernel_size=3, padding=1)
-#         self.pool2 = nn.MaxPool2d(kernel_size=2)
-#         self.fc1 = nn.Linear(64 * 25 * 25, 128)
-
-#     def forward(self, x):
-#         # print('1',x.shape)
-#         x = F.relu(self.conv1(x))
-#         # print('2',x.shape)
-#         x = self.pool1(x)
-#         # print('3',x.shape)
-#         x = F.relu(self.conv2(x))
-#         # print('4',x.shape)
-#         x = self.pool2(x)
-#         # print('5',x.shape)
-#         x = x.view(-1, 64 * 25 * 25)
-#         # print('6',x.shape)
-#         x = F.relu(self.fc1(x))
-#         # print('7',x.shape)
-#         return x
-
-# # 构建孪生神经网络
-# class SiameseNetwork(nn.Module):
-#     def __init__(self):
-#         super(SiameseNetwork, self).__init__()
-#         self.cnn = CNN()
-#         self.fc1 = nn.Linear(128, 64)
-#         self.fc2 = nn.Linear(64, 1)
-
-#     def forward(self, x1, x2):
-#         feat1 = self.cnn(x1)
-#         feat2 = self.cnn(x2)
-#         dist = feat1 - feat2
-#         # print('8',dist.shape)
-#         x = F.relu(self.fc1(dist))
-#         # print('9',x.shape)
-        
-#         x = self.fc2(x)
-#         # print(x.shape)
-#         return x
-
-# # 训练孪生神经网络
-# def train_siamese_network(model, train_loader, criterion, optimizer, num_epochs=10):
-#     for epoch in range(num_epochs):
-#         running_loss = 0.0
-#         for i, data in enumerate(train_loader, 0):
-#             inputs1, inputs2, labels = data
-#             optimizer.zero_grad()
-#             outputs = model(inputs1, inputs2)
-#             loss = criterion(outputs.squeeze(), labels)
-#             loss.backward()
-#             optimizer.step()
-#             running_loss += loss.item()
-#         print('Epoch %d loss: %.3f' % (epoch + 1, running_loss / len(train_loader)))    
-        
-# def get_similarity_score(output1, output2):
-#     # 计算两张图片的特征向量之间的余弦相似度
-#     dot_product = torch.sum(output1 * output2, dim=1)
-#     norm1 = torch.norm(output1, p=2, dim=1)
-#     norm2 = torch.norm(output2, p=2, dim=1)
-#     similarity_score = dot_product / (norm1 * norm2)
-#     return similarity_score        
-
+   
 class Evaluator(nn.Module):
     def __init__(self):
         super(Evaluator,self).__init__()
@@ -524,6 +457,147 @@ class Evaluator(nn.Module):
         return x
 
 
+########################### Fusion Net #############################################
+def fconv_block(in_dim,out_dim,act_fn):
+    model = nn.Sequential(
+        nn.Conv2d(in_dim,out_dim, kernel_size=3, stride=1, padding=1),
+        nn.BatchNorm2d(out_dim),
+        act_fn,
+    )
+    return model
+
+
+def conv_trans_block(in_dim,out_dim,act_fn,size_out):
+    model = nn.Sequential(
+        nn.ConvTranspose2d(in_dim,out_dim, kernel_size=3, stride=2, padding=1,output_padding=1),
+        nn.Upsample(size=size_out),  ###
+        nn.BatchNorm2d(out_dim),
+        
+        act_fn,
+    )
+    return model
+
+
+def maxpool():
+    pool = nn.MaxPool2d(kernel_size=2, stride=2, padding=0)
+    return pool
+
+
+def conv_block_3(in_dim,out_dim,act_fn):
+    model = nn.Sequential(
+        fconv_block(in_dim,out_dim,act_fn),
+        fconv_block(out_dim,out_dim,act_fn),
+        nn.Conv2d(out_dim,out_dim, kernel_size=3, stride=1, padding=1),
+        nn.BatchNorm2d(out_dim),
+    )
+    return model
+
+class Conv_residual_conv(nn.Module):
+
+    def __init__(self,in_dim,out_dim,act_fn):
+        super(Conv_residual_conv,self).__init__()
+        self.in_dim = in_dim
+        self.out_dim = out_dim
+        act_fn = act_fn
+
+        self.conv_1 = fconv_block(self.in_dim,self.out_dim,act_fn)
+        self.conv_2 = conv_block_3(self.out_dim,self.out_dim,act_fn)
+        self.conv_3 = fconv_block(self.out_dim,self.out_dim,act_fn)
+
+    def forward(self,input):
+        conv_1 = self.conv_1(input)
+        conv_2 = self.conv_2(conv_1)
+        res = conv_1 + conv_2
+        conv_3 = self.conv_3(res)
+        return conv_3
+
+
+class FusionGenerator(nn.Module):
+
+    def __init__(self,input_nc, output_nc, ngf):
+        super(FusionGenerator,self).__init__()
+        self.in_dim = input_nc
+        self.out_dim = ngf
+        self.final_out_dim = output_nc
+        act_fn = nn.LeakyReLU(0.2, inplace=True)
+        act_fn_2 = nn.ReLU()
+
+        print("\n------Initiating FusionNet------\n")
+
+        # encoder
+
+        self.down_1 = Conv_residual_conv(self.in_dim, self.out_dim, act_fn)
+        self.pool_1 = maxpool()#->50
+        self.down_2 = Conv_residual_conv(self.out_dim, self.out_dim * 2, act_fn)
+        self.pool_2 = maxpool() #->25
+        self.down_3 = Conv_residual_conv(self.out_dim * 2, self.out_dim * 4, act_fn)
+        self.pool_3 = maxpool()#->12
+        self.down_4 = Conv_residual_conv(self.out_dim * 4, self.out_dim * 8, act_fn)
+        self.pool_4 = maxpool()#->6
+
+        # bridge
+
+        self.bridge = Conv_residual_conv(self.out_dim * 8, self.out_dim * 16, act_fn)
+
+        # decoder
+
+        self.deconv_1 = conv_trans_block(self.out_dim * 16, self.out_dim * 8, act_fn_2,size_out=12)
+        self.up_1 = Conv_residual_conv(self.out_dim * 8, self.out_dim * 8, act_fn_2)
+        self.deconv_2 = conv_trans_block(self.out_dim * 8, self.out_dim * 4, act_fn_2,size_out=25)
+        self.up_2 = Conv_residual_conv(self.out_dim * 4, self.out_dim * 4, act_fn_2)
+        self.deconv_3 = conv_trans_block(self.out_dim * 4, self.out_dim * 2, act_fn_2,size_out=50)
+        self.up_3 = Conv_residual_conv(self.out_dim * 2, self.out_dim * 2, act_fn_2)
+        self.deconv_4 = conv_trans_block(self.out_dim * 2, self.out_dim, act_fn_2,size_out=100)
+        self.up_4 = Conv_residual_conv(self.out_dim, self.out_dim, act_fn_2)
+
+        # output
+
+        self.out = nn.Conv2d(self.out_dim,self.final_out_dim, kernel_size=3, stride=1, padding=1)
+        self.out_2 = nn.Sigmoid()
+
+
+        # initialization
+
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                m.weight.data.normal_(0.0, 0.02)
+                m.bias.data.fill_(0)
+            
+            elif isinstance(m, nn.BatchNorm2d):
+                m.weight.data.normal_(1.0, 0.02)
+                m.bias.data.fill_(0)
+
+
+    def forward(self,input):
+
+        down_1 = self.down_1(input)
+        pool_1 = self.pool_1(down_1)
+        down_2 = self.down_2(pool_1)
+        pool_2 = self.pool_2(down_2)
+        down_3 = self.down_3(pool_2)
+        pool_3 = self.pool_3(down_3)
+        down_4 = self.down_4(pool_3)
+        pool_4 = self.pool_4(down_4)
+
+        bridge = self.bridge(pool_4)
+
+        deconv_1 = self.deconv_1(bridge)
+        skip_1 = (deconv_1 + down_4)/2
+        up_1 = self.up_1(skip_1)
+        deconv_2 = self.deconv_2(up_1)
+        skip_2 = (deconv_2 + down_3)/2
+        up_2 = self.up_2(skip_2)
+        deconv_3 = self.deconv_3(up_2)
+        skip_3 = (deconv_3 + down_2)/2
+        up_3 = self.up_3(skip_3)
+        deconv_4 = self.deconv_4(up_3)
+        skip_4 = (deconv_4 + down_1)/2
+        up_4 = self.up_4(skip_4)
+
+        out = self.out(up_4)
+        out = self.out_2(out)
+    
+        return out
         
 # #########################################################
 # # Use summary to print the network architecture
