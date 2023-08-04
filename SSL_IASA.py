@@ -37,7 +37,6 @@ def IASA(As, Ae,IASA_iters):
     return A1
 
 def loss_fg_bg_mse(Pred, fg_bg):
-   
     fg_mask = fg_bg == 1
     bg_mask = fg_bg == 0
     fg_mean = Pred[fg_mask].mean()
@@ -109,13 +108,13 @@ with open(train_lossDegragation_TXTNotes,'a') as file0:
 
 
 SSVL_Freeze, SSVL_frozen_layers = False, []
-
 SSVL_best_recon_psnr = 0.0
 
 SSVL_total_loss_list = []
 PSNR_list = []
 PSNR_binary_list = []
 
+NOTE = TIME + "_" + NET + "_" + Method + '_' + Update_version + '_L' + Lossfunc_TWOPOOLS + '_' + Lossfunc_SSVL + '_Continue' + str(Continue) + '_BOH' + str(BOH) #x
 net_path = './model_pth/' + NOTE + ".pth"
 final_path =  './model_pth/' + NOTE + '/' + str(int(base_epochs)) + "_final.pth"
 # net = UNet_V3(img_ch=img_ch, output_ch=output_ch, output_process=output_process)
@@ -159,7 +158,7 @@ for base_epoch_i in range(base_epochs):
                 assert SSVL_output_As.min() >= 0.0 and SSVL_output_As.max() <= 1.0, "SSVL_output_Ps is out of range [0, 1]"
           
             SSVL_Ac, SSVL_Pc = ASM(d=20e-3, PhsHolo=SSVL_Pu.to(device), AmpHolo=SSVL_output_As.to(device))
-            ######################################## Modification #############################################################
+            SSVL_Pc = SSVL_Pc.detach()
             if base_epoch_i <50:
                 Binary_As = IASA(SSVL_output_As, SSVL_input_Ae,30)
             else:
@@ -215,7 +214,7 @@ for base_epoch_i in range(base_epochs):
                 val_output_As=net((val_input_Ae).to(device))
              
                 
-                val_output_As_binary = torch.where(val_output_As>torch.mean(val_output_As),1,0)
+                val_output_As_binary = torch.where(val_output_As>0.5,1,0)
                 
                 val_Pu = torch.zeros_like(val_output_As_binary)
                 
@@ -257,7 +256,7 @@ for base_epoch_i in range(base_epochs):
             
         # model = UNet_V3(img_ch=1, output_ch=1,output_process = '0to1')
         # model_binary = UNet_V3(img_ch=1, output_ch=1,output_process = 'sign')
-        ################# visualization ##################################
+        
         for i in range(4):
             net_path = './model_pth/' + NOTE + ".pth"
     
@@ -275,7 +274,7 @@ for base_epoch_i in range(base_epochs):
             with torch.no_grad():
                 output_As = model(input.to(device))
           
-                output_As_binary = torch.where(output_As>torch.mean(output_As),1,0)
+                output_As_binary = torch.where(output_As>0.5,1,0)
                 # output_As_binary = model_binary(input)
 
                 
@@ -352,3 +351,13 @@ write_list_to_elsx(My_writer=excel_writer, List=PSNR_binary_list, Columns_Name='
 
 excel_writer.save()
 excel_writer.close()
+
+
+
+# Validation(NOTE, output_ch, test_loader, net)
+final_path =  './model_pth/' + NOTE + '/' + str(int(base_epochs)) + "_final.pth"
+single_curve(NOTE, base_epochs, list=SSVL_total_loss_list, label='total loss', xlabel='Epochs', ylabel='total loss', savename='total_loss')
+single_curve(NOTE, base_epochs, list=PSNR_list, label='PSNR', xlabel='Epochs', ylabel='PSNR', savename='PSNR')
+double_curves(NOTE, base_epochs, list1=SSVL_total_loss_list, list2=PSNR_list, label1='total_loss', label2='PSNR', xlabel='Epochs', ylabel='total_loss or psnr',savename='total_loss_PSNR_comparason')
+
+
