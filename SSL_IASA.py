@@ -41,9 +41,11 @@ def loss_fg_bg_mse(Pred, fg_bg):
     bg_mask = fg_bg == 0
     fg_mean = Pred[fg_mask].mean()
     bg_mean = Pred[bg_mask].mean()
-
-    var = Pred.var()
-    loss = (1 - fg_mean)**2 + bg_mean**2 + var
+    
+    fg_var = Pred[fg_mask].var()
+    bg_var = Pred[bg_mask].var()
+ 
+    loss = (1 - fg_mean)**2 + bg_mean**2 + fg_var**2 + bg_var**2
     return loss
 
 criter_cosmae = LOSS_COS_MAE()
