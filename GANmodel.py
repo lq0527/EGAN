@@ -6,54 +6,6 @@ import torch.nn.functional as F
 from torch.nn import init
 from torchsummary import summary
 
-class dirac(torch.autograd.Function):
-    # def __init__(self):
-    #     super(mystep,self).__init__()
-    #     # self.mystep =mystep
-    @staticmethod 
-    def forward(ctx,input_x):
-        ctx.save_for_backward(input_x)
-        output = torch.sign(input_x)
-        output = (output+1.0)/2.0
-        return output
-    @staticmethod 
-    def backward(ctx,grad_output):
-        input, = ctx.saved_tensors
-        grad_input = grad_output.clone()
-        grad_input[input == 0] = torch.rand_like(grad_input[input == 0]) * 2 - 1
-        return grad_input
-
-class BinaryQuantize(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx, input, k, t):
-        ctx.save_for_backward(input, k, t)
-        out = torch.sign(input)
-        out = (out+1.0)/2.0 
-        return out
-
-    @staticmethod
-    def backward(ctx, grad_output):
-        input, k, t = ctx.saved_tensors
-        grad_input = k * t * (1 - torch.pow(torch.tanh(input * t), 2)) * grad_output
-        return grad_input, None, None
-           
-class mystep(torch.autograd.Function):
-    # def __init__(self):
-    #     super(mystep,self).__init__()
-    #     # self.mystep =mystep
-    @staticmethod 
-    def forward(ctx,input_x):
-        ctx.save_for_backward(input_x)
-        output = torch.sign(input_x)
-        output = (output+1.0)/2.0
-        return output
-    @staticmethod 
-    def backward(ctx,grad_output):
-        input_x, = ctx.saved_tensors
-        grad_output = grad_output*4*torch.sigmoid(4*input_x)*(1-torch.sigmoid(4*input_x))
-        return grad_output
-
-
 
 def init_weights(net, init_type='normal', gain=0.02):
     def init_func(m):
@@ -77,11 +29,7 @@ def init_weights(net, init_type='normal', gain=0.02):
 
     print('initialize network with %s' % init_type)
     net.apply(init_func)
-    
-    
-    
-    
-    
+   
 class conv_block(nn.Module):
     def __init__(self,ch_in,ch_out):
         super(conv_block,self).__init__()
@@ -289,18 +237,6 @@ class Generator(nn.Module):
             # if self.output_process == 'test_sign':
             #     d1 = torch.sigmoid(10*d1)  
             #     d1 = torch.where(d1 >= 0.5, 1, 0)
-            if self.output_process == 'mysign':
-                # d1 = torch.sigmoid(d1)
-                # # d1 = d1/torch.max(d1)
-                # d1 = torch.where(d1 >=torch.mean(d1), 1, 0)
-                # # d1 = torch.where(d1 >=0.5, 1, 0)
-                d1 = mystep.apply(d1)
-                # d1 = d1/torch.max(d1)
-                # d1 = (d1+1.0) / 2.0
-            if self.output_process == 'mysign1':
-                d1 = dirac.apply(d1)
-            if self.output_process == 'BinaryQuantize':
-                d1 = BinaryQuantize.apply(d1, self.k, self.t)
 
         elif self.output_ch == 2:
             if self.output_process == 'sigmoid':

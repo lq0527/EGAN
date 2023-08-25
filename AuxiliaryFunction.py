@@ -18,7 +18,7 @@ from torch.autograd import Variable
 from DataLoader import MyDataset, BatchSize, device, indices_train
 
 
-def ASM(d=20e-3, PhsHolo=torch.zeros((1,1,100,100)), AmpHolo=torch.zeros((1,1,100,100)), Lam=6.4e-4, fs=1 / (320e-6), BatchSize=BatchSize ):
+def ASM(d=20e-3, PhsHolo=torch.zeros((1,1,100,100)), AmpHolo=torch.zeros((1,1,100,100)), Lam=6.4e-4, fs=1 / (320e-6), BatchSize=BatchSize ):  #wave propagation
     '''
     ASM (Angular Spectrum Method) is a model fomulating wave propagation between two holpgram plane
     d is positive means propagate from source hologram to target hologram
@@ -99,7 +99,7 @@ def ASM(d=20e-3, PhsHolo=torch.zeros((1,1,100,100)), AmpHolo=torch.zeros((1,1,10
     
     return Amp2, Phs2
 
-def ASM_nullnorm(d=20e-3, PhsHolo=torch.zeros((1,1,100,100)), AmpHolo=torch.zeros((1,1,100,100)), Lam=6.4e-4, fs=1 / (320e-6), BatchSize=BatchSize ):
+def ASM_nullnorm(d=20e-3, PhsHolo=torch.zeros((1,1,100,100)), AmpHolo=torch.zeros((1,1,100,100)), Lam=6.4e-4, fs=1 / (320e-6), BatchSize=BatchSize ): #wave propagation without any normalizatiom
     '''
     ASM (Angular Spectrum Method) is a model fomulating wave propagation between two holpgram plane
     d is positive means propagate from source hologram to target hologram
@@ -255,7 +255,7 @@ def Amplitude_Revised(Ac_byEnergy, Ae_scaleup):
     assert (Ac_byEnergy_nmlzd >= 0.0).all() and (Ac_byEnergy_nmlzd <= 1.0).all(), "Ac_byEnergy_nmlzd is out of range of 0~1"
     return Ac_byEnergy_nmlzd
 
-
+#### not suitable for BAOH
 def Amplitude_Normalization_Scaleup(Ac_Batch = torch.zeros((BatchSize, 1, 100, 100)), Ae_Batch = torch.zeros((BatchSize, 1, 100, 100)), normalized = 'None'): # normalized = 'Max' or 'Mean' or 'Energy' 
     assert (Ae_Batch >= 0.0).all() and (Ae_Batch <= 1.0).all(), "The Ae_Batch is out of range [0, 1]" 
     if normalized == 'Energy_Average':
@@ -417,9 +417,7 @@ def Amplitude_Revised(AmpHolo_normlzd_byEnergy):
     assert AmpHolo_normlzd_byEnergy_revised.min() >= 0.0 and AmpHolo_normlzd_byEnergy_revised.max() <= 1.0, "AmpHolo_normlzd_byEnergy_revised is out of range [0,1]"
     return AmpHolo_normlzd_byEnergy_revised
 
-# ####################
-
-
+# #################### This is for pool collection (not related to ENN )
 
 
 def AeA1Collection(iter_i, savepath, data):
@@ -523,7 +521,7 @@ def DataCollection(save_root_path, save_folder_name, data, batch_i, capacity):
     for i in range(BatchSize):
         np.save(data_save_path + "/" + str((batch_i*BatchSize + i) % capacity) + ".npy", data[i,:,:,:])
 
-
+#########################
 def plot_subimage(total_row, total_column, sub_index, img, title, bar_min=-1, bar_max=-1, title_size=6):
     if bar_min==-1 or bar_max==-1:
         bar_min = img.min()
