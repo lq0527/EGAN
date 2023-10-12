@@ -336,7 +336,7 @@ for base_epoch_i in range(base_epochs):
             
         ####################validation        
         net = G  ##########
-        if base_epoch_i >= RL_epoch:
+        if base_epoch_i >= RL_epoch:  ###保存G的模型
             save_results(base_epoch_i, G, g_optimizer)
         with torch.no_grad():
             PSNR_val_sum = 0.0
