@@ -389,7 +389,7 @@ class Evaluator(nn.Module):
         x = F.adaptive_avg_pool2d(x, (1,1))
         x =  x.flatten(1)
         x = self.fc(x)
-        x = torch.sigmoid(x)
+        # x = torch.sigmoid(x)
         return x
 
 
